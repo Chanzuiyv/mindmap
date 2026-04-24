@@ -1,0 +1,425 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>广播剧字幕智能替换工具 v1.3 (Web版)</title>
+    <!-- 引入必要的库 -->
+    <script src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: "微软雅黑", Arial, sans-serif; max-width: 900px; margin: 0 auto; padding: 20px; background-color: #f5f7fa; }
+        .container { background: white; padding: 30px; border-radius: 12px; box-shadow: 0 2px 12px rgba(0,0,0,0.1); }
+        h1 { text-align: center; color: #333; margin-bottom: 30px; font-size: 24px; }
+        .section { margin-bottom: 25px; padding: 20px; border: 1px solid #e0e0e0; border-radius: 8px; }
+        .section h3 { color: #555; margin-bottom: 15px; font-size: 16px; }
+        .file-input-wrapper { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+        input[type="file"] { flex: 1; padding: 8px; border: 1px solid #ddd; border-radius: 4px; }
+        button { padding: 10px 20px; background-color: #409eff; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px; transition: background 0.3s; }
+        button:hover { background-color: #66b1ff; }
+        button:disabled { background-color: #a0cfff; cursor: not-allowed; }
+        .btn-group { display: flex; gap: 15px; justify-content: center; margin: 25px 0; }
+        #logArea { width: 100%; height: 350px; padding: 15px; border: 1px solid #ddd; border-radius: 4px; background-color: #fafafa; font-family: "Consolas", "Courier New", monospace; font-size: 13px; overflow-y: auto; white-space: pre-wrap; }
+        .log-info { color: #333; }
+        .log-success { color: #67c23a; }
+        .log-error { color: #f56c6c; }
+        .log-warning { color: #e6a23c; }
+        .log-debug { color: #909399; }
+        #downloadSection { display: none; text-align: center; padding: 20px; background-color: #f0f9eb; border: 1px solid #c2e7b0; border-radius: 8px; }
+        .stats { margin-top: 15px; padding: 15px; background-color: #f4f4f5; border-radius: 6px; font-size: 14px; color: #666; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>字幕【】智能替换为{} (Web版 v1.3)</h1>
+
+        <!-- 步骤1：上传角色表 -->
+        <div class="section">
+            <h3>步骤1：上传角色表格（可选，xls/xlsx/csv）</h3>
+            <div class="file-input-wrapper">
+                <input type="file" id="roleFile" accept=".xlsx,.xls,.csv">
+                <button onclick="clearRoleFile()">清空角色表</button>
+            </div>
+            <p id="roleFileStatus" style="margin-top:10px; font-size:13px; color:#666;"></p>
+        </div>
+
+        <!-- 步骤2：上传字幕文件 -->
+        <div class="section">
+            <h3>步骤2：上传字幕TXT文件（支持多选）</h3>
+            <div class="file-input-wrapper">
+                <input type="file" id="txtFiles" accept=".txt" multiple>
+                <button onclick="clearTxtFiles()">清空字幕</button>
+            </div>
+            <p id="txtFilesStatus" style="margin-top:10px; font-size:13px; color:#666;"></p>
+        </div>
+
+        <!-- 操作按钮 -->
+        <div class="btn-group">
+            <button id="startBtn" onclick="startProcessing()">一键批量处理字幕</button>
+            <button onclick="showHelp()">使用说明</button>
+        </div>
+
+        <!-- 日志区域 -->
+        <div class="section">
+            <h3>处理日志</h3>
+            <div id="logArea"></div>
+        </div>
+
+        <!-- 下载区域 -->
+        <div id="downloadSection">
+            <h3>处理完成！</h3>
+            <div id="statsInfo" class="stats"></div>
+            <button id="downloadBtn" onclick="downloadFiles()" style="margin-top:15px; font-size:16px; padding:12px 30px;">下载处理后的文件 (ZIP)</button>
+        </div>
+    </div>
+
+    <script>
+        // 固定常驻角色列表（内置9人）
+        const FIXED_CHARACTERS = new Set([
+            "顾子尧", "林致", "乔殊", "MANTA","夏予扬",
+            "许向安", "许向宁","LASER", "柏闻", "季少一"
+        ]);
+
+        // 全局变量
+        let tempChars = {}; // 动态角色：{剧集名: [角色列表]}
+        let processedFiles = []; // 处理后的文件
+        let totalReplacements = 0; // 全局替换计数器
+        let roleFileData = null; // 角色表文件数据
+
+        // 日志函数
+        function log(msg, type = 'info') {
+            const logArea = document.getElementById('logArea');
+            const time = new Date().toLocaleTimeString('zh-CN', { hour12: false });
+            const className = `log-${type}`;
+            logArea.innerHTML += `<div class="${className}">[${time}] ${msg}</div>`;
+            logArea.scrollTop = logArea.scrollHeight;
+        }
+
+        // 清空日志
+        function clearLog() {
+            document.getElementById('logArea').innerHTML = '';
+        }
+
+        // 角色表相关
+        document.getElementById('roleFile').addEventListener('change', function(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+            
+            roleFileData = file;
+            document.getElementById('roleFileStatus').innerHTML = `已选择：<strong>${file.name}</strong>`;
+            log(`已加载角色表：${file.name}`, 'info');
+        });
+
+        function clearRoleFile() {
+            document.getElementById('roleFile').value = '';
+            document.getElementById('roleFileStatus').innerHTML = '';
+            roleFileData = null;
+            tempChars = {};
+            log('已清空角色表', 'warning');
+        }
+
+        // 字幕文件相关
+        document.getElementById('txtFiles').addEventListener('change', function(e) {
+            const files = e.target.files;
+            if (!files.length) return;
+            
+            document.getElementById('txtFilesStatus').innerHTML = `已选择：<strong>${files.length} 个TXT文件</strong>`;
+            log(`已选择 ${files.length} 个字幕文件`, 'info');
+        });
+
+        function clearTxtFiles() {
+            document.getElementById('txtFiles').value = '';
+            document.getElementById('txtFilesStatus').innerHTML = '';
+            processedFiles = [];
+            document.getElementById('downloadSection').style.display = 'none';
+            log('已清空字幕文件', 'warning');
+        }
+
+        // 智能表头检测函数
+        function smartDetectHeaders(rows) {
+            // 尝试前3行作为表头
+            for (let headerRowIndex = 0; headerRowIndex < Math.min(3, rows.length); headerRowIndex++) {
+                const rawHeaders = rows[headerRowIndex];
+                if (!rawHeaders) continue;
+
+                // 清理表头：去除空格、转小写、去除不可见字符
+                const cleanedHeaders = rawHeaders.map(h => {
+                    if (h === null || h === undefined) return '';
+                    return String(h).trim().toLowerCase().replace(/\s+/g, '');
+                });
+
+                log(`调试：检测第 ${headerRowIndex+1} 行表头：${JSON.stringify(cleanedHeaders)}`, 'debug');
+
+                // 查找filename和temporary_chars的位置
+                const filenameIndex = cleanedHeaders.findIndex(h => 
+                    h === 'filename' || h === '文件名' || h === '剧集名'
+                );
+                const charsIndex = cleanedHeaders.findIndex(h => 
+                    h === 'temporary_chars' || h === 'temporarychars' || 
+                    h === '角色' || h === '临时角色' || h === '角色名'
+                );
+
+                if (filenameIndex !== -1 && charsIndex !== -1) {
+                    log(`成功：在第 ${headerRowIndex+1} 行找到表头`, 'success');
+                    log(`  filename列索引：${filenameIndex}`, 'debug');
+                    log(`  temporary_chars列索引：${charsIndex}`, 'debug');
+                    return {
+                        headerRow: headerRowIndex,
+                        filenameIndex,
+                        charsIndex
+                    };
+                }
+            }
+
+            return null;
+        }
+
+        // 读取角色表（智能表头版）
+        async function loadRoleFile() {
+            if (!roleFileData) {
+                tempChars = {};
+                return true;
+            }
+
+            try {
+                const data = await roleFileData.arrayBuffer();
+                const workbook = XLSX.read(data);
+                const sheetName = workbook.SheetNames[0];
+                const worksheet = workbook.Sheets[sheetName];
+                
+                // 以数组形式读取所有行（不自动识别表头）
+                const rows = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
+                
+                if (rows.length === 0) {
+                    log('角色表为空', 'warning');
+                    tempChars = {};
+                    return true;
+                }
+
+                // 智能检测表头
+                const headerInfo = smartDetectHeaders(rows);
+                if (!headerInfo) {
+                    log('错误：无法在表格中找到有效的表头', 'error');
+                    log('请确保表格包含以下列之一：', 'error');
+                    log('  文件名列：filename、文件名、剧集名', 'error');
+                    log('  角色列：temporary_chars、角色、临时角色、角色名', 'error');
+                    return false;
+                }
+
+                // 构建映射
+                tempChars = {};
+                // 从表头下一行开始读取数据
+                for (let i = headerInfo.headerRow + 1; i < rows.length; i++) {
+                    const row = rows[i];
+                    if (!row) continue;
+
+                    const filename = String(row[headerInfo.filenameIndex] || '').trim();
+                    const charsStr = String(row[headerInfo.charsIndex] || '').trim();
+                    
+                    if (!filename) continue;
+                    
+                    const charList = charsStr && charsStr !== 'nan' 
+                        ? charsStr.split(/[、,，]/).map(c => c.trim()).filter(c => c)
+                        : [];
+                    
+                    if (!tempChars[filename]) {
+                        tempChars[filename] = [];
+                    }
+                    tempChars[filename].push(...charList);
+                }
+
+                log(`成功加载 ${Object.keys(tempChars).length} 个剧集的动态角色`, 'success');
+                return true;
+            } catch (e) {
+                log(`角色表读取失败：${e.message}`, 'error');
+                log(`详细错误：${e.stack}`, 'debug');
+                return false;
+            }
+        }
+
+        // 判断是否为角色内容
+        function isCharacterContent(content, currentChars) {
+            const parts = content.split('/').map(p => p.trim());
+            for (const part of parts) {
+                if (!FIXED_CHARACTERS.has(part) && !currentChars.includes(part)) {
+                    return false;
+                }
+            }
+            return true;
+        }
+
+        // 处理单行
+        function processLine(line, currentChars) {
+            let replacementsInLine = 0;
+            const pattern = /【([^】]*?)】/g;
+            
+            const newLine = line.replace(pattern, (match, inner) => {
+                inner = inner.trim();
+                if (isCharacterContent(inner, currentChars)) {
+                    return `【${inner}】`;
+                } else {
+                    replacementsInLine++;
+                    return `{${inner}}`;
+                }
+            });
+
+            return { newLine, count: replacementsInLine };
+        }
+
+        // 检测文件编码并读取文本
+        async function readFileAsText(file) {
+            const buffer = await file.arrayBuffer();
+            // 尝试UTF-8
+            try {
+                const text = new TextDecoder('utf-8', { fatal: true }).decode(buffer);
+                return { text, encoding: 'utf-8' };
+            } catch (e) {
+                // 尝试GBK
+                try {
+                    const text = new TextDecoder('gbk', { fatal: true }).decode(buffer);
+                    return { text, encoding: 'gbk' };
+                } catch (e2) {
+                    // 兜底
+                    const text = new TextDecoder('utf-8', { fatal: false }).decode(buffer);
+                    return { text, encoding: 'unknown' };
+                }
+            }
+        }
+
+        // 处理单个文件
+        async function processSingleFile(file) {
+            try {
+                const { text: content, encoding } = await readFileAsText(file);
+                const baseName = file.name.replace(/\.txt$/i, '');
+                
+                // 匹配动态角色
+                let currentChars = [];
+                for (const key in tempChars) {
+                    if (key.includes(baseName) || baseName.includes(key)) {
+                        currentChars = tempChars[key];
+                        break;
+                    }
+                }
+
+                // 处理内容
+                const lines = content.split(/\r?\n/);
+                let newLines = [];
+                let fileReplacements = 0;
+
+                for (const line of lines) {
+                    const { newLine, count } = processLine(line, currentChars);
+                    newLines.push(newLine);
+                    fileReplacements += count;
+                }
+
+                const newContent = newLines.join('\n');
+                totalReplacements += fileReplacements;
+
+                // 保存处理后的文件
+                processedFiles.push({
+                    name: file.name,
+                    content: newContent
+                });
+
+                log(`✅ 处理完成：${file.name}`, 'success');
+                log(`   替换了 ${fileReplacements} 处 | 角色数：${currentChars.length} | 编码：${encoding}`, 'info');
+                return true;
+            } catch (e) {
+                log(`❌ 处理失败：${file.name}`, 'error');
+                log(`   错误：${e.message}`, 'error');
+                return false;
+            }
+        }
+
+        // 主处理函数
+        async function startProcessing() {
+            const txtFiles = document.getElementById('txtFiles').files;
+            if (!txtFiles.length) {
+                alert('请先选择字幕TXT文件');
+                return;
+            }
+
+            // 重置状态
+            clearLog();
+            processedFiles = [];
+            totalReplacements = 0;
+            document.getElementById('downloadSection').style.display = 'none';
+            document.getElementById('startBtn').disabled = true;
+
+            log('========== 开始批量处理 ==========', 'info');
+
+            // 加载角色表
+            const roleLoaded = await loadRoleFile();
+            if (!roleLoaded) {
+                document.getElementById('startBtn').disabled = false;
+                return;
+            }
+
+            // 处理所有文件
+            let success = 0;
+            let fail = 0;
+
+            for (const file of txtFiles) {
+                const ok = await processSingleFile(file);
+                if (ok) success++;
+                else fail++;
+            }
+
+            // 完成
+            log(`\n========== 全部处理完成 ==========`, 'success');
+            log(`成功：${success} 个 | 失败：${fail} 个`, 'info');
+            log(`本次总共替换了 ${totalReplacements} 处【】为{}`, 'success');
+
+            // 显示下载区域
+            document.getElementById('statsInfo').innerHTML = `
+                <strong>处理统计：</strong><br>
+                成功文件：${success} 个<br>
+                失败文件：${fail} 个<br>
+                总替换数：${totalReplacements} 处
+            `;
+            document.getElementById('downloadSection').style.display = 'block';
+            document.getElementById('startBtn').disabled = false;
+        }
+
+        // 下载文件
+        async function downloadFiles() {
+            if (processedFiles.length === 0) {
+                alert('没有可下载的文件');
+                return;
+            }
+
+            const zip = new JSZip();
+            processedFiles.forEach(file => {
+                zip.file(file.name, file.content);
+            });
+
+            const content = await zip.generateAsync({ type: 'blob' });
+            saveAs(content, 'processed_subtitles.zip');
+            log('已开始下载处理后的文件 (ZIP)', 'success');
+        }
+
+        // 帮助
+        function showHelp() {
+            alert(`【使用说明】
+1. 角色表格式：必须包含 文件名列 和 角色列
+   - 文件名列支持：filename、文件名、剧集名
+   - 角色列支持：temporary_chars、角色、临时角色、角色名
+   - 多个角色用 、 或 , 分隔
+2. 内置常驻角色：顾子尧、LASER、MANTA、林致、乔殊、夏予扬、许向安、许向宁、柏闻、季少一
+3. 替换规则：
+   - 【角色名】→ 保留不变
+   - 【动作/音效/环境】→ 替换为 {内容}
+   - 【A/B】多角色 → 保留
+4. 支持编码：UTF-8、GBK 自动识别
+5. 匹配方式：文件名模糊匹配
+6. 文件保存：下载ZIP压缩包，包含所有处理后的文件`);
+        }
+
+        // 初始化
+        log('Web版字幕替换工具 v1.3 已就绪', 'success');
+        log('提示：已升级智能表头检测，支持多种表头格式', 'info');
+    </script>
+</body>
+</html>
