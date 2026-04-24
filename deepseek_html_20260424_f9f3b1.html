@@ -1,0 +1,339 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>自动化SOP - 文件夹结构思维导图</title>
+    <style>
+        body {
+            font-family: 'Microsoft YaHei', 'PingFang SC', sans-serif;
+            background: #f5f7fa;
+            margin: 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 40px;
+            align-items: center;
+        }
+        .chart-container {
+            background: white;
+            border-radius: 20px;
+            padding: 30px 20px 30px 20px;
+            box-shadow: 0 8px 30px rgba(0,0,0,0.08);
+            width: 90%;
+            max-width: 1200px;
+        }
+        .chart-title {
+            font-size: 24px;
+            font-weight: bold;
+            margin-bottom: 20px;
+            color: #2c3e50;
+            border-left: 6px solid #3498db;
+            padding-left: 15px;
+        }
+        /* 树形结构样式 */
+        .tree {
+            list-style: none;
+            padding-left: 0;
+            margin: 0;
+        }
+        .tree ul {
+            list-style: none;
+            padding-left: 40px;
+            margin: 0;
+        }
+        .tree li {
+            position: relative;
+            margin: 0;
+            padding: 8px 0 0 20px;
+            line-height: 28px;
+        }
+        /* 连线 */
+        .tree li::before {
+            content: '';
+            position: absolute;
+            left: -10px;
+            top: 0;
+            bottom: 0;
+            border-left: 2px solid #ccc;
+        }
+        .tree li:last-child::before {
+            height: 20px;
+        }
+        .tree li::after {
+            content: '';
+            position: absolute;
+            left: -10px;
+            top: 14px;
+            width: 20px;
+            height: 2px;
+            background: #ccc;
+        }
+        /* 根节点不显示连线 */
+        .tree > li::before, .tree > li::after {
+            display: none;
+        }
+        /* 节点内容 */
+        .node-content {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 5px 12px;
+            border-radius: 20px;
+            background: #f0f4ff;
+            border: 1px solid #d0d7f0;
+            cursor: pointer;
+            user-select: none;
+            transition: 0.2s;
+            font-size: 14px;
+        }
+        .node-content:hover {
+            background: #e0e8ff;
+        }
+        .node-content.root-node {
+            background: #3498db;
+            color: white;
+            font-weight: bold;
+            border: none;
+            cursor: default;
+        }
+        .toggle-icon {
+            font-size: 14px;
+            width: 18px;
+            text-align: center;
+            transition: 0.2s;
+        }
+        .toggle-icon.empty {
+            visibility: hidden;
+        }
+        .collapsed > ul {
+            display: none;
+        }
+        /* 特殊节点颜色 */
+        .node-A { background: #E1F5FE; border-color: #81D4FA; }
+        .node-B { background: #FFF9C4; border-color: #FFF176; }
+        .node-C { background: #E8F5E9; border-color: #A5D6A7; }
+        .node-group { background: #E1BEE7; border-color: #CE93D8; }
+        .node-member { background: #FFE0B2; border-color: #FFB74D; }
+        .node-file { background: #ffffff; border: 1px dashed #aaa; }
+    </style>
+</head>
+<body>
+
+<div class="chart-container">
+    <div class="chart-title">📁 整体架构 - 技术组目录思维导图</div>
+    <div id="chart1" class="tree"></div>
+</div>
+
+<div class="chart-container">
+    <div class="chart-title">🍊 橘子工作区 - 任务文件夹内部结构</div>
+    <div id="chart2" class="tree"></div>
+</div>
+
+<div class="chart-container">
+    <div class="chart-title">📂 交付归档区 - 按五个组分类</div>
+    <div id="chart3" class="tree"></div>
+</div>
+
+<script>
+    // ----- 数据结构定义 -----
+    const treeData1 = {
+        name: "技术组（企业文档根目录）",
+        root: true,
+        children: [
+            {
+                name: "成员工作区",
+                children: [
+                    { name: "🍊 橘子", children: [
+                        { name: "A-一次性: 20260421_内容组_称呼汇总", type: "A" },
+                        { name: "B-通用: 20260422_运营组_进度监控", type: "B" },
+                        { name: "C-周期: 20260423_内容组_词频统计_Auto", type: "C" }
+                    ]},
+                    { name: "☁️ 云攸", children: [] },
+                    { name: "📚 余泽", children: [] }
+                ]
+            },
+            {
+                name: "交付归档区",
+                children: [
+                    { name: "内容组", type: "group", children: [
+                        { name: "A-一次性", type: "A" },
+                        { name: "B-通用工具", type: "B" },
+                        { name: "C-周期报表", type: "C" }
+                    ]},
+                    { name: "审核组", type: "group", children: [
+                        { name: "A-一次性", type: "A" },
+                        { name: "B-通用工具", type: "B" },
+                        { name: "C-周期报表", type: "C" }
+                    ]},
+                    { name: "运营组", type: "group", children: [
+                        { name: "A-一次性", type: "A" },
+                        { name: "B-通用工具", type: "B" },
+                        { name: "C-周期报表", type: "C" }
+                    ]},
+                    { name: "技术组", type: "group", children: [
+                        { name: "A-一次性", type: "A" },
+                        { name: "B-通用工具", type: "B" },
+                        { name: "C-周期报表", type: "C" }
+                    ]},
+                    { name: "美工组", type: "group", children: [
+                        { name: "A-一次性", type: "A" },
+                        { name: "B-通用工具", type: "B" },
+                        { name: "C-周期报表", type: "C" }
+                    ]}
+                ]
+            },
+            {
+                name: "管理表格",
+                children: [
+                    { name: "一次性需求记录.xlsx", type: "file" },
+                    { name: "通用工具清单.xlsx", type: "file" },
+                    { name: "周期性报表登记表.xlsx", type: "file" }
+                ]
+            }
+        ]
+    };
+
+    const treeData2 = {
+        name: "🍊 橘子",
+        root: true,
+        children: [
+            { name: "A类: 20260421_内容组_称呼汇总/", type: "A", children: [
+                { name: "脚本.py", type: "file" },
+                { name: "test_input/", type: "file" },
+                { name: "test_output/", type: "file" },
+                { name: "最终结果/", type: "file", children: [
+                    { name: "称呼汇总.xlsx", type: "file" }
+                ]}
+            ]},
+            { name: "B类: 20260422_运营组_进度监控/", type: "B", children: [
+                { name: "代码/", type: "file", children: [
+                    { name: "query_tool.py", type: "file" },
+                    { name: "helper.py", type: "file" }
+                ]},
+                { name: "数据库/", type: "file", children: [
+                    { name: "data.xlsx", type: "file" }
+                ]},
+                { name: "最终结果/", type: "file", children: [
+                    { name: "进度监控.exe", type: "file" },
+                    { name: "使用说明.docx", type: "file" },
+                    { name: "打包.zip", type: "file" }
+                ]}
+            ]},
+            { name: "C类: 20260423_内容组_词频统计_Auto/", type: "C", children: [
+                { name: "脚本/", type: "file", children: [
+                    { name: "report.py", type: "file" }
+                ]},
+                { name: "日志/", type: "file" },
+                { name: "test_input/", type: "file" },
+                { name: "最终结果/", type: "file", children: [
+                    { name: "报表示例.xlsx", type: "file" },
+                    { name: "定时任务截图.png", type: "file" },
+                    { name: "运行说明.md", type: "file" }
+                ]}
+            ]}
+        ]
+    };
+
+    const treeData3 = {
+        name: "交付归档区",
+        root: true,
+        children: [
+            { name: "内容组", type: "group", children: [
+                { name: "A-一次性", type: "A" },
+                { name: "B-通用工具", type: "B" },
+                { name: "C-周期报表", type: "C" }
+            ]},
+            { name: "审核组", type: "group", children: [
+                { name: "A-一次性", type: "A" },
+                { name: "B-通用工具", type: "B" },
+                { name: "C-周期报表", type: "C" }
+            ]},
+            { name: "运营组", type: "group", children: [
+                { name: "A-一次性", type: "A" },
+                { name: "B-通用工具", type: "B" },
+                { name: "C-周期报表", type: "C" }
+            ]},
+            { name: "技术组", type: "group", children: [
+                { name: "A-一次性", type: "A" },
+                { name: "B-通用工具", type: "B" },
+                { name: "C-周期报表", type: "C" }
+            ]},
+            { name: "美工组", type: "group", children: [
+                { name: "A-一次性", type: "A" },
+                { name: "B-通用工具", type: "B" },
+                { name: "C-周期报表", type: "C" }
+            ]}
+        ]
+    };
+
+    // ----- 递归渲染函数 -----
+    function renderTree(container, node) {
+        const ul = document.createElement('ul');
+        renderNode(ul, node);
+        container.appendChild(ul);
+    }
+
+    function renderNode(ul, node) {
+        const li = document.createElement('li');
+        const content = document.createElement('span');
+        content.className = 'node-content';
+
+        // 图标
+        const icon = document.createElement('span');
+        icon.className = 'toggle-icon';
+        if (node.children && node.children.length > 0) {
+            icon.textContent = '▼';
+        } else {
+            icon.classList.add('empty');
+        }
+        content.appendChild(icon);
+
+        // 文本
+        const text = document.createTextNode(' ' + node.name);
+        content.appendChild(text);
+
+        // 样式
+        if (node.root) {
+            content.classList.add('root-node');
+            icon.style.display = 'none'; // 根节点无需折叠
+        } else if (node.type === 'A') content.classList.add('node-A');
+        else if (node.type === 'B') content.classList.add('node-B');
+        else if (node.type === 'C') content.classList.add('node-C');
+        else if (node.type === 'group') content.classList.add('node-group');
+        else if (node.type === 'file') content.classList.add('node-file');
+        else if (node.name.includes('橘子') || node.name.includes('云攸') || node.name.includes('余泽'))
+            content.classList.add('node-member');
+
+        li.appendChild(content);
+
+        // 子节点
+        if (node.children && node.children.length > 0) {
+            const childUl = document.createElement('ul');
+            node.children.forEach(child => renderNode(childUl, child));
+            li.appendChild(childUl);
+
+            // 点击折叠功能
+            content.addEventListener('click', function(e) {
+                e.stopPropagation();
+                if (childUl.style.display === 'none') {
+                    childUl.style.display = '';
+                    icon.textContent = '▼';
+                } else {
+                    childUl.style.display = 'none';
+                    icon.textContent = '▶';
+                }
+            });
+        }
+
+        ul.appendChild(li);
+    }
+
+    // 初始化三张图
+    document.addEventListener('DOMContentLoaded', function() {
+        renderTree(document.getElementById('chart1'), treeData1);
+        renderTree(document.getElementById('chart2'), treeData2);
+        renderTree(document.getElementById('chart3'), treeData3);
+    });
+</script>
+
+</body>
+</html>
